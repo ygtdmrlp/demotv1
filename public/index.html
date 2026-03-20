@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="tr" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Mobil TV - IPTV Player</title>
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#121212">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #121212;
+            color: #ffffff;
+            overflow-x: hidden;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .scrollbar-hide::-webkit-scrollbar {
+            display: none;
+        }
+
+        .channel-card {
+            transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .channel-card:active {
+            transform: scale(0.95);
+        }
+
+        .player-controls-overlay {
+            background: linear-gradient(to top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.4) 50%, transparent 100%);
+        }
+
+        .netflix-gradient {
+            background: linear-gradient(180deg, rgba(18, 18, 18, 0.8) 0%, rgba(18, 18, 18, 0) 100%);
+        }
+
+        /* Custom Select Style for Quality */
+        #quality-selector {
+            background-color: rgba(0, 0, 0, 0.6);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            appearance: none;
+            -webkit-appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='white'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 8px center;
+            background-size: 16px;
+            padding-right: 32px;
+        }
+
+        #quality-selector option {
+            background-color: #1e1e1e;
+            color: white;
+        }
+
+        /* Mobile specific adjustments */
+        @media (max-width: 768px) {
+            .sidebar {
+                position: fixed;
+                top: 0;
+                left: -100%;
+                width: 80%;
+                height: 100vh;
+                z-index: 100;
+                background-color: #121212;
+                border-right: 1px solid rgba(255,255,255,0.1);
+                transition: left 0.3s ease;
+            }
+            .sidebar.show {
+                left: 0;
+                display: flex;
+            }
+            .sidebar-overlay {
+                display: none;
+                position: fixed;
+                inset: 0;
+                background: rgba(0,0,0,0.5);
+                backdrop-filter: blur(4px);
+                z-index: 90;
+            }
+            .sidebar-overlay.show {
+                display: block;
+            }
+        }
+    </style>
+</head>
+<body class="bg-[#121212] min-h-screen flex flex-col">
+
+    <!-- Sidebar Overlay for Mobile -->
+    <div id="sidebar-overlay" class="sidebar-overlay" onclick="toggleSidebar()"></div>
+
+    <!-- Setup / Login Screen -->
+    <div id="setup-screen" class="fixed inset-0 z-50 flex items-center justify-center bg-[#121212] p-4 overflow-y-auto">
+        <div class="w-full max-w-md bg-[#1e1e1e] rounded-2xl p-8 shadow-2xl">
+            <div class="flex flex-col items-center mb-8">
+                <div class="w-16 h-16 bg-red-600 rounded-xl flex items-center justify-center mb-4 shadow-lg">
+                    <i data-lucide="tv-2" class="w-10 h-10 text-white"></i>
+                </div>
+                <h1 class="text-2xl font-bold">Mobil TV</h1>
+                <p class="text-gray-400 text-sm">Gelişmiş IPTV Deneyimi</p>
+            </div>
+
+            <div class="space-y-4">
+                <!-- Login Options -->
+                <div class="flex border-b border-gray-700 mb-6">
+                    <button onclick="switchSetupTab('m3u-url')" class="setup-tab flex-1 py-3 text-sm font-semibold border-b-2 border-red-600 text-red-600 transition-all">M3U URL</button>
+                    <button onclick="switchSetupTab('xtream')" class="setup-tab flex-1 py-3 text-sm font-semibold border-b-2 border-transparent text-gray-400 transition-all">Xtream Codes</button>
+                    <button onclick="switchSetupTab('file')" class="setup-tab flex-1 py-3 text-sm font-semibold border-b-2 border-transparent text-gray-400 transition-all">M3U Dosya</button>
+                </div>
+
+                <!-- M3U URL Form -->
+                <div id="m3u-url-form" class="setup-form space-y-4">
+                    <div class="space-y-2">
+                        <label class="text-sm font-medium text-gray-300">Playlist URL</label>
+                        <input type="text" id="m3u-url-input" placeholder="http://example.com/playlist.m3u" class="w-full bg-[#2a2a2a] border border-gray-700 rounded-lg px-4 py-3 focus:outline-none focus:border-red-600 transition-all">
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <input type="checkbox" id="append-m3u-url" class="accent-red-600">
+                        <label for="append-m3u-url" class="text-xs text-gray-400 cursor-pointer">Mevcut listeye ekle</label>
+                    </div>
+                    <button onclick="loadM3UUrl()" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded-lg transition-all flex items-center justify-center gap-2">
+                        <span>Yükle</span>
+                        <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                    </button>
+                </div>
+
+                <!-- Xtream Form -->
+                <div id="xtream-form" class="setup-form hidden space-y-4">
+                    <div class="space-y-2">
+                        <label class="text-sm font-medium text-gray-300">Sunucu Adresi</label>
+                        <input type="text" id="xtream-server" placeholder="http://server.com:8080" class="w-full bg-[#2a2a2a] border border-gray-700 rounded-lg px-4 py-3 focus:outline-none focus:border-red-600 transition-all">
+                    </div>
+                    <div class="space-y-2">
+                        <label class="text-sm font-medium text-gray-300">Kullanıcı Adı</label>
+                        <input type="text" id="xtream-user" placeholder="Kullanıcı Adı" class="w-full bg-[#2a2a2a] border border-gray-700 rounded-lg px-4 py-3 focus:outline-none focus:border-red-600 transition-all">
+                    </div>
+                    <div class="space-y-2">
+                        <label class="text-sm font-medium text-gray-300">Şifre</label>
+                        <input type="password" id="xtream-pass" placeholder="Şifre" class="w-full bg-[#2a2a2a] border border-gray-700 rounded-lg px-4 py-3 focus:outline-none focus:border-red-600 transition-all">
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <input type="checkbox" id="append-xtream" class="accent-red-600">
+                        <label for="append-xtream" class="text-xs text-gray-400 cursor-pointer">Mevcut listeye ekle</label>
+                    </div>
+                    <button onclick="loginXtream()" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded-lg transition-all flex items-center justify-center gap-2">
+                        <span>Giriş Yap</span>
+                        <i data-lucide="log-in" class="w-4 h-4"></i>
+                    </button>
+                </div>
+
+                <!-- M3U File Form -->
+                <div id="file-form" class="setup-form hidden space-y-4">
+                    <div class="space-y-2">
+                        <label class="text-sm font-medium text-gray-300">M3U Dosyası Seç</label>
+                        <div class="relative">
+                            <input type="file" id="m3u-file-input" accept=".m3u" class="hidden">
+                            <label for="m3u-file-input" class="w-full bg-[#2a2a2a] border border-dashed border-gray-700 rounded-lg px-4 py-8 flex flex-col items-center justify-center cursor-pointer hover:border-red-600 transition-all">
+                                <i data-lucide="upload-cloud" class="w-8 h-8 text-gray-500 mb-2"></i>
+                                <span class="text-sm text-gray-400">Dosya seçmek için tıkla</span>
+                                <span id="file-name-display" class="text-xs text-red-500 mt-2 font-medium"></span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <input type="checkbox" id="append-file" class="accent-red-600">
+                        <label for="append-file" class="text-xs text-gray-400 cursor-pointer">Mevcut listeye ekle</label>
+                    </div>
+                    <button onclick="uploadM3UFile()" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded-lg transition-all flex items-center justify-center gap-2">
+                        <span>Dosyayı Yükle</span>
+                        <i data-lucide="check" class="w-4 h-4"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <p id="setup-error" class="mt-4 text-red-500 text-xs text-center font-medium hidden"></p>
+        </div>
+    </div>
+
+    <!-- Main Player App -->
+    <div id="main-app" class="hidden flex flex-col h-screen">
+        <!-- Header -->
+        <header class="h-16 flex items-center justify-between px-4 md:px-8 border-b border-gray-800 bg-[#121212] sticky top-0 z-30">
+            <div class="flex items-center gap-4">
+                <button onclick="toggleSidebar()" class="p-2 md:hidden">
+                    <i data-lucide="menu" class="w-6 h-6"></i>
+                </button>
+                <div class="flex items-center gap-2">
+                    <div class="w-8 h-8 bg-red-600 rounded-lg flex items-center justify-center">
+                        <i data-lucide="tv-2" class="w-5 h-5 text-white"></i>
+                    </div>
+                    <span class="font-bold text-lg hidden sm:inline">Mobil TV</span>
+                </div>
+            </div>
+
+            <div class="flex-1 max-w-md mx-4">
+                <div class="relative group">
+                    <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-red-600 transition-colors"></i>
+                    <input type="text" id="search-input" placeholder="Kanal veya film ara..." class="w-full bg-[#1e1e1e] border border-gray-800 rounded-full px-10 py-2 text-sm focus:outline-none focus:border-red-600 transition-all">
+                </div>
+            </div>
+
+            <div class="flex items-center gap-3">
+                <button onclick="refreshPlaylist()" class="p-2 text-gray-400 hover:text-green-500 transition-colors flex items-center gap-1 text-sm font-medium" title="Playlisti Yenile">
+                    <i data-lucide="refresh-cw" class="w-5 h-5"></i>
+                    <span class="hidden md:inline">Yenile</span>
+                </button>
+                <button onclick="toggleSettings()" class="p-2 text-gray-400 hover:text-white transition-colors" title="Ayarlar">
+                    <i data-lucide="settings" class="w-5 h-5"></i>
+                </button>
+                <button onclick="clearPlaylist()" class="p-2 text-gray-400 hover:text-red-500 transition-colors flex items-center gap-1 text-sm font-medium" title="Playlisti Temizle">
+                    <i data-lucide="trash-2" class="w-5 h-5"></i>
+                    <span class="hidden md:inline">Temizle</span>
+                </button>
+                <button onclick="logout()" class="p-2 text-gray-400 hover:text-white transition-colors">
+                    <i data-lucide="log-out" class="w-5 h-5"></i>
+                </button>
+            </div>
+        </header>
+
+        <div class="flex flex-1 overflow-hidden">
+            <!-- Sidebar -->
+            <nav id="sidebar" class="sidebar w-64 md:flex flex-col border-r border-gray-800 bg-[#121212] overflow-y-auto hidden">
+                <div class="p-4 space-y-6">
+                    <div>
+                        <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3 px-2">Kategoriler</h3>
+                        <div class="space-y-1">
+                            <button onclick="filterType('live')" class="nav-btn w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium hover:bg-[#1e1e1e] transition-all text-red-600 bg-[#1e1e1e]">
+                                <i data-lucide="radio" class="w-4 h-4"></i>
+                                <span>Canlı TV</span>
+                            </button>
+                            <button onclick="filterType('vod')" class="nav-btn w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium hover:bg-[#1e1e1e] transition-all text-gray-400">
+                                <i data-lucide="film" class="w-4 h-4"></i>
+                                <span>Filmler (VOD)</span>
+                            </button>
+                            <button onclick="filterType('series')" class="nav-btn w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium hover:bg-[#1e1e1e] transition-all text-gray-400">
+                                <i data-lucide="clapperboard" class="w-4 h-4"></i>
+                                <span>Diziler</span>
+                            </button>
+                            <button onclick="filterType('favorites')" class="nav-btn w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium hover:bg-[#1e1e1e] transition-all text-gray-400">
+                                <i data-lucide="heart" class="w-4 h-4"></i>
+                                <span>Favoriler</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="category-list-container">
+                        <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3 px-2">Gruplar</h3>
+                        <div id="category-list" class="space-y-1">
+                            <!-- Categories will be injected here -->
+                        </div>
+                    </div>
+                </div>
+            </nav>
+
+            <!-- Content Area -->
+            <main class="flex-1 overflow-y-auto bg-[#0a0a0a] p-4 md:p-8 scroll-smooth scrollbar-hide">
+                <div id="content-header" class="mb-6">
+                    <h2 id="category-title" class="text-2xl font-bold">Tüm Kanallar</h2>
+                    <p id="item-count" class="text-gray-500 text-sm">0 öğe bulundu</p>
+                </div>
+
+                <div id="items-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8 gap-4">
+                    <!-- Items will be injected here -->
+                </div>
+                
+                <!-- Loading State -->
+                <div id="loading-overlay" class="hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm flex items-center justify-center">
+                    <div class="flex flex-col items-center">
+                        <div class="w-12 h-12 border-4 border-red-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+                        <p class="text-white font-medium">Yükleniyor...</p>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- Video Player Overlay -->
+    <div id="player-overlay" class="hidden fixed inset-0 z-[100] bg-black flex flex-col group">
+        <!-- Player Header -->
+        <div class="absolute top-0 left-0 right-0 p-4 md:p-8 flex items-center justify-between z-10 transition-opacity duration-300 opacity-0 group-hover:opacity-100 netflix-gradient">
+            <div class="flex items-center gap-4">
+                <button onclick="closePlayer()" class="p-2 hover:bg-white/10 rounded-full transition-colors">
+                    <i data-lucide="chevron-left" class="w-8 h-8 text-white"></i>
+                </button>
+                <div>
+                    <h2 id="player-title" class="font-bold text-lg md:text-xl line-clamp-1">Kanal Adı</h2>
+                    <p id="player-epg" class="text-sm text-gray-400 line-clamp-1">Yükleniyor...</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-2">
+                <button onclick="toggleFavoriteCurrent()" id="player-fav-btn" class="p-3 hover:bg-white/10 rounded-full transition-colors">
+                    <i data-lucide="heart" class="w-6 h-6"></i>
+                </button>
+                <button onclick="showChannelList()" class="p-3 hover:bg-white/10 rounded-full transition-colors">
+                    <i data-lucide="list" class="w-6 h-6"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Video Container -->
+        <div class="flex-1 flex items-center justify-center bg-black relative">
+            <video id="video-player" class="w-full h-full object-contain" playsinline></video>
+            
+            <!-- Buffering / Loading inside Player -->
+            <div id="player-loading" class="hidden absolute inset-0 flex items-center justify-center bg-black/20">
+                <div class="w-16 h-16 border-4 border-red-600 border-t-transparent rounded-full animate-spin"></div>
+            </div>
+        </div>
+
+        <!-- Player Controls -->
+        <div class="absolute bottom-0 left-0 right-0 p-4 md:p-8 transition-opacity duration-300 opacity-0 group-hover:opacity-100 player-controls-overlay">
+            <div class="max-w-6xl mx-auto space-y-4">
+                <!-- Seek Bar (only for VOD) -->
+                <div id="seek-container" class="hidden group/seek relative w-full h-1.5 bg-white/20 rounded-full cursor-pointer mb-6">
+                    <div id="seek-progress" class="absolute h-full bg-red-600 rounded-full" style="width: 0%"></div>
+                    <div class="absolute -top-4 left-0 text-xs font-mono text-gray-400" id="current-time">00:00</div>
+                    <div class="absolute -top-4 right-0 text-xs font-mono text-gray-400" id="total-time">00:00</div>
+                </div>
+
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-4 md:gap-8">
+                        <button onclick="togglePlay()" id="play-btn" class="text-white hover:scale-110 transition-transform">
+                            <i data-lucide="play" class="w-8 h-8 fill-current"></i>
+                        </button>
+                        <div class="flex items-center gap-2 md:gap-4">
+                            <button onclick="prevChannel()" class="text-white/80 hover:text-white transition-colors">
+                                <i data-lucide="skip-back" class="w-6 h-6"></i>
+                            </button>
+                            <button onclick="nextChannel()" class="text-white/80 hover:text-white transition-colors">
+                                <i data-lucide="skip-forward" class="w-6 h-6"></i>
+                            </button>
+                        </div>
+                        <div class="flex items-center gap-3 group/volume">
+                            <button onclick="toggleMute()" id="mute-btn" class="text-white/80 hover:text-white transition-colors">
+                                <i data-lucide="volume-2" class="w-6 h-6"></i>
+                            </button>
+                            <input type="range" id="volume-slider" min="0" max="1" step="0.1" value="1" class="w-20 md:w-32 h-1 accent-red-600 cursor-pointer">
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-4 md:gap-6">
+                        <select id="quality-selector" onchange="changeQuality(this.value)">
+                            <option value="auto">Auto</option>
+                        </select>
+                        <button onclick="toggleFullscreen()" class="text-white/80 hover:text-white transition-colors">
+                            <i data-lucide="maximize" class="w-6 h-6"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="hidden fixed inset-0 z-[110] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+        <div class="w-full max-w-lg bg-[#1e1e1e] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div class="p-6 border-b border-gray-800 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <i data-lucide="settings" class="w-6 h-6 text-red-600"></i>
+                    <h2 class="text-xl font-bold">Ayarlar</h2>
+                </div>
+                <button onclick="toggleSettings()" class="p-2 hover:bg-white/10 rounded-full transition-colors">
+                    <i data-lucide="x" class="w-6 h-6"></i>
+                </button>
+            </div>
+            
+            <div class="flex-1 overflow-y-auto p-6 space-y-8 scrollbar-hide">
+                <!-- Player Settings -->
+                <section class="space-y-4">
+                    <h3 class="text-sm font-bold text-gray-500 uppercase tracking-wider flex items-center gap-2">
+                        <i data-lucide="play-circle" class="w-4 h-4"></i>
+                        Oynatıcı Ayarları
+                    </h3>
+                    <div class="space-y-4">
+                        <div class="flex items-center justify-between p-3 bg-[#2a2a2a] rounded-xl">
+                            <div>
+                                <p class="font-medium text-sm">Proxy Kullan (CORS Bypass)</p>
+                                <p class="text-xs text-gray-400">Yüklenmeyen yayınlar için proxy kullanır</p>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="setting-use-proxy" class="sr-only peer" checked onchange="updateSetting('useProxy', this.checked)">
+                                <div class="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"></div>
+                            </label>
+                        </div>
+                        <div class="flex items-center justify-between p-3 bg-[#2a2a2a] rounded-xl">
+                            <div>
+                                <p class="font-medium text-sm">Düşük Gecikme Modu</p>
+                                <p class="text-xs text-gray-400">Canlı yayınlarda gecikmeyi minimize eder</p>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="setting-low-latency" class="sr-only peer" onchange="updateSetting('lowLatency', this.checked)">
+                                <div class="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"></div>
+                            </label>
+                        </div>
+                        <div class="flex items-center justify-between p-3 bg-[#2a2a2a] rounded-xl">
+                            <div>
+                                <p class="font-medium text-sm">Otomatik Oynat</p>
+                                <p class="text-xs text-gray-400">Kanal seçildiğinde otomatik başlar</p>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="setting-auto-play" class="sr-only peer" checked onchange="updateSetting('autoPlay', this.checked)">
+                                <div class="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"></div>
+                            </label>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- UI Settings -->
+                <section class="space-y-4">
+                    <h3 class="text-sm font-bold text-gray-500 uppercase tracking-wider flex items-center gap-2">
+                        <i data-lucide="layout" class="w-4 h-4"></i>
+                        Görünüm Ayarları
+                    </h3>
+                    <div class="space-y-4">
+                        <div class="flex items-center justify-between p-3 bg-[#2a2a2a] rounded-xl">
+                            <div>
+                                <p class="font-medium text-sm">Kompakt Görünüm</p>
+                                <p class="text-xs text-gray-400">Kanal listesini daha küçük gösterir</p>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="setting-compact-mode" class="sr-only peer" onchange="updateSetting('compactMode', this.checked)">
+                                <div class="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"></div>
+                            </label>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- About -->
+                <section class="pt-4 border-t border-gray-800 space-y-2">
+                    <div class="flex justify-between text-xs text-gray-500">
+                        <span>Versiyon</span>
+                        <span>1.0.0 (Beta)</span>
+                    </div>
+                    <div class="flex justify-between text-xs text-gray-500">
+                        <span>Geliştirici</span>
+                        <span>Mobil TV Team</span>
+                    </div>
+                </section>
+            </div>
+            
+            <div class="p-4 bg-[#121212] flex justify-end">
+                <button onclick="toggleSettings()" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-6 rounded-lg transition-all">
+                    Kapat
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/app.js"></script>
+</body>
+</html>
